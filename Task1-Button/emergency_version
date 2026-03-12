@@ -1,0 +1,238 @@
+// # emergency version ! if all else fails use this as foundation
+
+const SOURCE_TABLE_NAME = "RA Filter";
+const SOURCE_VIEW_NAME  = "RA Filter"; 
+const TARGET_TABLE_NAME = "Stream 1";
+
+const FIELD_ARTICLE_ID = "Article_ID";
+const FIELD_JOURNAL_CODE = "Journal_Code";
+const FIELD_PUBLICATION_YEAR = "Publication Year";
+const FIELD_VOLUME = "Volume";
+const FIELD_ISSUE = "Issue";
+const FIELD_TITLE = "Title";
+const FIELD_DOI = "DOI";
+const FIELD_PDF = "PDF";
+
+const FIELDS = [
+  FIELD_ARTICLE_ID,
+  FIELD_JOURNAL_CODE,
+  FIELD_PUBLICATION_YEAR,
+  FIELD_VOLUME,
+  FIELD_ISSUE,
+  FIELD_TITLE,
+  FIELD_DOI,
+  FIELD_PDF,
+];
+
+
+// ---------- helpers ----------
+function toPrintableString(record, fieldName) {
+  // Prefer getCellValueAsString if available (most reliable for printing)
+  if (record.getCellValueAsString) {
+    const s = record.getCellValueAsString(fieldName);
+    return (s && String(s).trim().length > 0) ? String(s) : "";
+  }
+
+  const v = record.getCellValue(fieldName);
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v.trim().length ? v : "";
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+
+  try {
+    const s = JSON.stringify(v);
+    return s && s !== "{}" && s !== "[]" ? s : "";
+  } catch {
+    return "";
+  }
+}
+
+function attachmentCount(record, fieldName) {
+  const v = record.getCellValue(fieldName);
+  if (!v) return 0;
+  if (Array.isArray(v)) return v.length;
+  // sometimes a single attachment object
+  if (typeof v === "object") return 1;
+  return 0;
+}
+
+function printField(label, value) {
+  output.text(`• ${label}: ${value && value.trim().length ? value : "EMPTY"}`);
+}
+
+function sanitizeAttachments(att) {
+  if (!att) return [];
+  const arr = Array.isArray(att) ? att : [att];
+  return arr
+    .map(a => ({
+      title: a.title ?? a.filename ?? a.name,
+      url: a.url,
+      mimetype: a.mimetype,
+      size: a.size,
+    }))
+    .filter(a => a.url); // must have url
+}
+
+// ---------- STEP 1: button context ----------
+
+output.text("STEP 1 — Script started.");
+
+const rowCtx = cursor?.row;
+if (!rowCtx) {
+  output.text("❌ cursor.row missing — run from a Button on a record.");
+  return;
+}
+output.text(`✅ Button triggered. cursor.row.id = ${rowCtx.id}`);
+
+// ---------- STEP 2: load the record from the source view ----------
+output.text(`STEP 2 — Resolving source table/view: ${SOURCE_TABLE_NAME} / ${SOURCE_VIEW_NAME}`);
+
+const sourceTable = base.getTable(SOURCE_TABLE_NAME);
+if (!sourceTable) {
+  output.text(`❌ Source table not found: "${SOURCE_TABLE_NAME}"`);
+  return;
+}
+
+const sourceView = sourceTable.views?.find(v => v.name === SOURCE_VIEW_NAME);
+if (!sourceView) {
+  output.text(`❌ Source view not found: "${SOURCE_VIEW_NAME}" (check the exact view name)`);
+  return;
+}
+
+const query = await sourceView.selectRecordsAsync();
+
+const record = query.records.find(r => r.id === rowCtx.id);
+if (!record) {
+  output.text("❌ Could not find the clicked record in the loaded view records.");
+  output.text("Tip: the view may be filtered/paginated so the record isn't in the first batch.");
+  return;
+}
+output.text("✅ Matched clicked record in view.");
+
+// ---------- STEP 3: store values ----------
+output.text("STEP 3 — Storing field values...");
+
+const articleId = toPrintableString(record, FIELD_ARTICLE_ID);
+const journalCode = toPrintableString(record, FIELD_JOURNAL_CODE);
+const publicationYear = toPrintableString(record, FIELD_PUBLICATION_YEAR);
+const volume = toPrintableString(record, FIELD_VOLUME);
+const issue = toPrintableString(record, FIELD_ISSUE);
+const title = toPrintableString(record, FIELD_TITLE);
+const doi = toPrintableString(record, FIELD_DOI);
+
+// RAW values for writing
+const rawArticleId = record.getCellValue(FIELD_ARTICLE_ID);
+const rawJournalCode = record.getCellValue(FIELD_JOURNAL_CODE);         // single select RAW
+const rawPublicationYear = record.getCellValue(FIELD_PUBLICATION_YEAR); // number RAW
+const rawVolume = record.getCellValue(FIELD_VOLUME);
+const rawIssue = record.getCellValue(FIELD_ISSUE);
+const rawTitle = record.getCellValue(FIELD_TITLE);
+const rawDoi = record.getCellValue(FIELD_DOI);                          // URL RAW (usually string)
+const rawPdf = record.getCellValue(FIELD_PDF);                          // attachment RAW (array)
+
+const pdfCount = attachmentCount(record, FIELD_PDF);
+const sanitizedPdf = sanitizeAttachments(rawPdf);
+
+output.text("✅ Values stored.");
+
+// ---------- STEP 4: print values (except PDF contents) ----------
+output.text("STEP 4 — Printing stored values (PDF summarized):");
+
+printField(FIELD_ARTICLE_ID, articleId);
+printField(FIELD_JOURNAL_CODE, journalCode);
+printField(FIELD_PUBLICATION_YEAR, publicationYear); //This one's format is funky ie "2025.0" for 383
+printField(FIELD_VOLUME, volume);
+printField(FIELD_ISSUE, issue);
+printField(FIELD_TITLE, title);
+printField(FIELD_DOI, doi);
+
+output.text(`• ${FIELD_PDF}: ${pdfCount > 0 ? `NOT EMPTY (attachments=${pdfCount})` : "EMPTY"}`);
+
+const pdf = record.getCellValue(FIELD_PDF);
+
+// PDF: do not print contents, only summary
+if (pdf && pdf.length > 0) {
+  for (const doc of pdf) {
+    output.text(`File: ${doc.title}`);
+    output.text(`Type: ${doc.mimetype}`);
+    output.text(`Size: ${doc.size} bytes`);
+    output.text(`URL: ${doc.url}`);
+  }
+}
+// ---------- STEP 5: create a new record in Stream 1 ----------
+output.text(`STEP 5 — Resolving target table: ${TARGET_TABLE_NAME}`);
+
+const targetTable = base.getTable(TARGET_TABLE_NAME);
+if (!targetTable) {
+  output.text(`❌ Target table not found: "${TARGET_TABLE_NAME}"`);
+  return;
+}
+
+output.text("✅ Target table resolved.");
+
+// Create with a unique debug Title so we can find it reliably even if createRecordAsync returns a number.
+const debugTitle = `__DEBUG__ ${new Date().toISOString()}`;
+output.text(`STEP 5b — Creating new Stream 1 record with Title="${debugTitle}"`);
+
+let createResult;
+try {
+  createResult = await targetTable.createRecordAsync({ [FIELD_TITLE]: debugTitle});
+  output.text(`✅ createRecordAsync returned ${createResult}`);
+} catch (err) {
+  output.text("❌ Failed to create record in Stream 1 (required fields / permissions / validation).");
+  output.text(String(err));
+  return;
+}
+
+
+
+try {  await targetTable.updateRecordAsync(createResult, {
+    [FIELD_ARTICLE_ID]: articleId,
+    [FIELD_VOLUME]: volume,
+    [FIELD_ISSUE]: issue,
+    [FIELD_PUBLICATION_YEAR]: publicationYear
+    //[FIELD_TITLE]: title                          // DONT FORGET TO UNCOMMENT
+  });
+  output.text("✅ Updated Stream 1: Article_ID, Volume, Issue, Publication_Year.");
+} catch (err) {
+  output.text(String(err));
+  return;
+}
+
+
+async function tryUpdate(fieldName, value) {
+  try {
+    await targetTable.updateRecordAsync(createResult, { [fieldName]: value });
+    const result = createResult.getCellValueAsString(fieldName);
+    output.text(`${result}`)
+    output.text(`✅ Updated "${fieldName}"`);
+  } catch (err) {
+    output.text(`❌ Failed updating "${fieldName}"`);
+    output.text(String(err));
+  }
+}
+
+await tryUpdate(FIELD_JOURNAL_CODE, rawJournalCode);      // single select raw
+// single select reject values not in their list option --> do we want to create an option. 
+// at the very least i should include a warning if it does not update - or if its not found in the list of options
+// Get a Select field and its current choices
+// const categoryField = projectsTable.getField('Category');
+// const currentChoices = categoryField.options?.choices || [];
+
+// // Add a new choice
+// const updatedChoices = [
+//   ...currentChoices,
+//   { title: 'New Category', color: '#800080' }
+// ];
+
+// // Update the field
+// await categoryField.updateOptionsAsync({
+//   choices: updatedChoices
+// });
+
+// output.text(`Added new category option. Now ${updatedChoices.length} categories available.`);
+await tryUpdate(FIELD_DOI, rawDoi);      
+                 // url raw
+await targetTable.updateRecordAsync(createResult, {
+  [FIELD_PDF]: sanitizeAttachments(rawPdf)
+});//// Array of attachment objects or empty array
+// Each attachment has: { title, url, mimetype, size, ... }
