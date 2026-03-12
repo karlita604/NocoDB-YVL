@@ -1,0 +1,516 @@
+
+const SOURCE_TABLE_NAME = "RA Filter";
+const SOURCE_VIEW_NAME  = "RA Filter";
+const TARGET_TABLE_NAME = "Stream 1";
+
+const FIELD_ARTICLE_ID = "Article_ID";
+const FIELD_JOURNAL_CODE = "Journal_Code";
+const FIELD_PUBLICATION_YEAR = "Publication Year";
+const FIELD_VOLUME = "Volume";
+const FIELD_ISSUE = "Issue";
+const FIELD_TITLE = "Title";
+const FIELD_DOI = "DOI";
+const FIELD_PDF = "PDF";
+
+const FIELDS = [
+  FIELD_ARTICLE_ID,
+  FIELD_JOURNAL_CODE,
+  FIELD_PUBLICATION_YEAR,
+  FIELD_VOLUME,
+  FIELD_ISSUE,
+  FIELD_TITLE,
+  FIELD_DOI,
+  FIELD_PDF,
+];
+
+// ======================================================
+// HELPERS (unchanged behavior)
+// ======================================================
+
+function toPrintableString(record, fieldName) {
+  if (record.getCellValueAsString) {
+    const s = record.getCellValueAsString(fieldName);
+    return (s && String(s).trim().length > 0) ? String(s) : "";
+  }
+
+  const v = record.getCellValue(fieldName);
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v.trim().length ? v : "";
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+
+  try {
+    const s = JSON.stringify(v);
+    return s && s !== "{}" && s !== "[]" ? s : "";
+  } catch {
+    return "";
+  }
+}
+
+function attachmentCount(record, fieldName) {
+  const v = record.getCellValue(fieldName);
+  if (!v) return 0;
+  if (Array.isArray(v)) return v.length;
+  if (typeof v === "object") return 1;
+  return 0;
+}
+
+function printField(label, value) {
+  output.text(`• ${label}: ${value && value.trim().length ? value : "EMPTY"}`);
+}
+
+function sanitizeAttachments(att) {
+  if (!att) return [];
+  const arr = Array.isArray(att) ? att : [att];
+  return arr
+    .map(a => ({
+      title: a.title ?? a.filename ?? a.name,
+      url: a.url,
+      mimetype: a.mimetype,
+      size: a.size,
+    }))
+    .filter(a => a.url);
+}
+
+function isEmptyCell(v) {
+  if (v === null || v === undefined) return true;
+  if (typeof v === "string") return v.trim().length === 0;
+  if (Array.isArray(v)) return v.length === 0;
+  return false;
+}
+
+async function fetchRecordById(table, id) {
+  const q = await table.selectRecordsAsync();
+  return q.records.find(r => r.id === id) || null;
+}
+
+async function verifyAndPrint(table, id, fieldName) {
+  const rec = await fetchRecordById(table, id);
+  if (!rec) {
+    output.text(`⚠️ Verify "${fieldName}": could not re-fetch record id=${id}`);
+    return;
+  }
+  const asString = rec.getCellValueAsString
+    ? rec.getCellValueAsString(fieldName)
+    : JSON.stringify(rec.getCellValue(fieldName));
+
+  output.text(`🔎 Stored "${fieldName}": ${asString || "EMPTY"}`);
+}
+
+// ======================================================
+// STEP 1 — BUTTON CONTEXT
+// ======================================================
+
+output.text("STEP 1 — Script started.");
+
+script.step({
+  title: "Script started",
+  description: "Triggered by button",
+  color: "blue",
+  icon: "download",
+});
+
+const rowCtx = cursor?.row;
+if (!rowCtx) {
+  output.text("❌ cursor.row missing — run from a Button on a record.");
+  return;
+}
+output.text(`✅ Button triggered. cursor.row.id = ${rowCtx.id}`);
+
+// ======================================================
+// STEP 2 — RESOLVE SOURCE + LOAD CLICKED RECORD
+// ======================================================
+
+script.step({
+  title: "Loading the record from the source view",
+  description: `Resolving source table/view: ${SOURCE_TABLE_NAME} / ${SOURCE_VIEW_NAME}`,
+  color: "yellow",
+  icon: "checkCircle",
+});
+
+const sourceTable = base.getTable(SOURCE_TABLE_NAME);
+if (!sourceTable) {
+  output.text(`❌ Source table not found: "${SOURCE_TABLE_NAME}"`);
+  return;
+}
+
+const sourceView = sourceTable.views?.find(v => v.name === SOURCE_VIEW_NAME);
+if (!sourceView) {
+  output.text(`❌ Source view not found: "${SOURCE_VIEW_NAME}" (check the exact view name)`);
+  return;
+}
+
+const query = await sourceView.selectRecordsAsync();
+const record = query.records.find(r => r.id === rowCtx.id);
+
+if (!record) {
+  output.text("❌ Could not find the clicked record in the loaded view records.");
+  output.text("Tip: the view may be filtered/paginated so the record isn't in the first batch.");
+  return;
+}
+
+// ======================================================
+// STEP 3 — READ VALUES (PRINTABLE + RAW) + BUILD MAP
+// ======================================================
+
+script.step({
+  title: "Storing field values",
+  description: "Capturing printable + raw values",
+  color: "purple",
+  icon: "sync",
+});
+
+// printable (for logs)
+const articleId = toPrintableString(record, FIELD_ARTICLE_ID);
+const journalCode = toPrintableString(record, FIELD_JOURNAL_CODE);
+const publicationYear = toPrintableString(record, FIELD_PUBLICATION_YEAR);
+const volume = toPrintableString(record, FIELD_VOLUME);
+const issue = toPrintableString(record, FIELD_ISSUE);
+const title = toPrintableString(record, FIELD_TITLE);
+const doi = toPrintableString(record, FIELD_DOI);
+
+// raw (for updates)
+const rawArticleId = record.getCellValue(FIELD_ARTICLE_ID);
+const rawJournalCode = record.getCellValue(FIELD_JOURNAL_CODE);
+const rawPublicationYear = record.getCellValue(FIELD_PUBLICATION_YEAR);
+const rawVolume = record.getCellValue(FIELD_VOLUME);
+const rawIssue = record.getCellValue(FIELD_ISSUE);
+const rawTitle = record.getCellValue(FIELD_TITLE);
+const rawDoi = record.getCellValue(FIELD_DOI);
+const rawPdf = record.getCellValue(FIELD_PDF);
+
+// pdf helpers
+const pdfCount = attachmentCount(record, FIELD_PDF);
+const sanitizedPdf = sanitizeAttachments(rawPdf);
+
+// centralized map (used for emptiness scan)
+const sourceFieldMap = {
+  [FIELD_ARTICLE_ID]: rawArticleId,
+  //[FIELD_JOURNAL_CODE]: rawJournalCode,
+  [FIELD_PUBLICATION_YEAR]: rawPublicationYear,
+  [FIELD_VOLUME]: rawVolume,
+  [FIELD_ISSUE]: rawIssue,
+ // [FIELD_TITLE]: rawTitle, -- // UNCOMMEN THIS WHEN YOU ARE DONE DEBUGGING
+  [FIELD_DOI]: rawDoi,
+  //[FIELD_PDF]: rawPdf,
+};
+
+output.text("✅ Values stored.");
+
+// ======================================================
+// STEP 4 — PRINT DEBUG (INCLUDING PDF METADATA)
+// ======================================================
+
+output.text("STEP 4 — Printing stored values (PDF summarized):");
+
+printField(FIELD_ARTICLE_ID, articleId);
+printField(FIELD_JOURNAL_CODE, journalCode);
+printField(FIELD_PUBLICATION_YEAR, publicationYear);
+printField(FIELD_VOLUME, volume);
+printField(FIELD_ISSUE, issue);
+printField(FIELD_TITLE, title);
+printField(FIELD_DOI, doi);
+
+output.text(`• ${FIELD_PDF}: ${pdfCount > 0 ? `NOT EMPTY (attachments=${pdfCount})` : "EMPTY"}`);
+
+const pdf = record.getCellValue(FIELD_PDF);
+if (pdf && pdf.length > 0) {
+  for (const doc of pdf) {
+    output.text(`File: ${doc.title}`);
+    output.text(`Type: ${doc.mimetype}`);
+    output.text(`Size: ${doc.size} bytes`);
+    output.text(`URL: ${doc.url}`);
+  }
+}
+
+// ======================================================
+// STEP 5 — RESOLVE TARGET + EMPTY-SCAN + CREATE RECORD
+// ======================================================
+
+script.step({
+  title: "Copy to Stream 1",
+  description: "Scanning empties + creating target record",
+  color: "blue",
+  icon: "database",
+});
+
+
+// resolve target (unchanged)
+const targetTable = base.getTable(TARGET_TABLE_NAME);
+if (!targetTable) {
+  output.text(`❌ Target table not found: "${TARGET_TABLE_NAME}"`);
+  return;
+}
+
+// create (unchanged)
+const debugTitle = `__DEBUG__ ${new Date().toISOString()}`;
+
+let createResult;
+try {
+  createResult = await targetTable.createRecordAsync({ [FIELD_TITLE]: debugTitle });
+} catch (err) {
+  output.text("❌ Failed to create record in Stream 1 (required fields / permissions / validation).");
+  output.text(String(err));
+  return;
+}
+
+// ======================================================
+// STEP 6 — UPDATE GROUP 1 (PDF, Title, Journal Code and Empties excluded)
+// ======================================================
+
+
+async function updateIfNotEmpty(table, recordId, fieldMap) {
+
+  for (const [fieldName, value] of Object.entries(fieldMap)) {
+
+    if (isEmptyCell(value)) {
+      output.text(`⚠️ EMPTY — ${fieldName} (skipped)`);
+      continue;
+    }
+
+    try {
+      await table.updateRecordAsync(recordId, { [fieldName]: value });
+      output.text(`✅ Updated — ${fieldName}`);
+    } catch (err) {
+      output.text(`❌ Failed updating — ${fieldName}`);
+      output.text(String(err));
+    }
+
+  }
+
+}
+
+await updateIfNotEmpty(targetTable, createResult, sourceFieldMap);
+
+
+//=====================================
+// STEP 7 — SINGLE SELECT CHECK (Journal_Code)
+//=====================================
+
+const TRANSFER_CHECKBOX_FIELD_ID = "cnxpjkjloygs0b9";
+
+// 0) Extract the desired label from rawJournalCode
+const desiredTitle =
+  rawJournalCode && typeof rawJournalCode === "object"
+    ? (rawJournalCode.title ?? rawJournalCode.name ?? rawJournalCode.label ?? "")
+    : (rawJournalCode ?? "");
+
+if (!desiredTitle || String(desiredTitle).trim().length === 0) {
+  output.text("⚠️ Journal_Code is empty in source — skipping select update.");
+} else {
+  // 1) Get the SELECT FIELD from the TARGET table (Stream 1)
+  const journalField = targetTable.getField(FIELD_JOURNAL_CODE);
+
+  // Debug: confirm we got the field and what methods exist
+  output.text(`STEP 7a — Target field resolved: "${FIELD_JOURNAL_CODE}"`);
+  output.text(`• Field type: ${journalField.type}`);
+  output.text(`• Has updateOptionsAsync: ${typeof journalField.updateOptionsAsync === "function"}`);
+
+  // 2) Read current choices
+  const currentChoices = journalField.options?.choices || [];
+  output.text(`STEP 7b — Current choices (${currentChoices.length}):`);
+  currentChoices.forEach(c => output.markdown(`- ${c.title}`));
+
+  // 3) Check if desired choice exists
+  const exists = currentChoices.some(
+    c => String(c.title).toLowerCase() === String(desiredTitle).toLowerCase()
+  );
+
+  // 4) If missing, add it
+  if (!exists) {
+    output.text(`STEP 7c — "${desiredTitle}" not found. Attempting to add...`);
+
+    const updatedChoices = [
+      ...currentChoices,
+      { title: String(desiredTitle) } // keep minimal; you can add color if your instance needs it
+    ];
+
+    try {
+      // IMPORTANT: this is the call that actually creates the new option
+      await journalField.updateOptionsAsync({ choices: updatedChoices });
+      output.text(`✅ Added new choice "${desiredTitle}".`);
+    } catch (err) {
+      output.text("❌ Failed to add new choice via updateOptionsAsync.");
+      output.text(String(err));
+      output.text("⚠️ If this fails, it’s usually permissions or base/connection restrictions.");
+    }
+
+    // Re-read choices to confirm it actually got added
+    const afterChoices = journalField.options?.choices || [];
+    const nowExists = afterChoices.some(
+      c => String(c.title).toLowerCase() === String(desiredTitle).toLowerCase()
+    );
+    output.text(`STEP 7d — Confirm added? ${nowExists ? "YES" : "NO"}`);
+
+    // Print choices again if you want
+    // afterChoices.forEach(c => output.markdown(`- ${c.title}`));
+  } else {
+    output.text(`STEP 7c — "${desiredTitle}" already exists. No need to add.`);
+  }
+
+  // 5) Update the TARGET record’s single select value
+  // Many setups accept the string title if it exists as a choice.
+  try {
+    await targetTable.updateRecordAsync(createResult, {
+      [FIELD_JOURNAL_CODE]: String(desiredTitle),
+    });
+    output.text(`✅ Updated Stream 1 Journal_Code to "${desiredTitle}".`);
+  } catch (err) {
+    output.text("❌ Failed updating Stream 1 Journal_Code.");
+    output.text(String(err));
+  }
+}
+
+//=====================================
+// STEP 8 — FLAG SOURCE CHECKBOX (Transferred to Stream 1)
+//=====================================
+
+try {
+  await sourceTable.updateRecordAsync(rowCtx.id, {
+    [TRANSFER_CHECKBOX_FIELD_ID]: true
+  });
+  output.text('✅ Flagged source record: "Transfered to Stream 1" checked.');
+} catch (err) {
+  output.text('❌ Failed to flag source checkbox.');
+  output.text(String(err));
+}
+
+//=====================================
+// STEP 8 — PDF transfer 
+//=====================================
+//=====================================
+// STEP 8 — PDF transfer (UPLOAD BY URL)
+//=====================================
+
+output.text("STEP 8 — PDF transfer via upload-by-url");
+
+// ----------------------------------------------------
+// NocoDB app URL
+// ----------------------------------------------------
+const NOCO_BASE_URL = "https://app.nocodb.com";
+
+// ----------------------------------------------------
+// Paste your API token here
+// ----------------------------------------------------
+const NOCO_API_TOKEN = "NznZCYDSMkYbTvo7qxrXINAqPkHvXgU67PVMV0G9";
+
+// rawPdf was already read earlier in STEP 3
+if (!rawPdf || !Array.isArray(rawPdf) || rawPdf.length === 0) {
+  output.text("⚠️ No PDF found in source record.");
+  return;
+}
+
+// We expect one PDF, so take the first one
+const sourceFile = rawPdf[0];
+
+output.text(`Source file title: ${sourceFile.title}`);
+output.text(`Source file URL: ${sourceFile.url}`);
+
+// ----------------------------------------------------
+// Build the upload-by-url payload
+// ----------------------------------------------------
+const uploadPayload = {
+  url: sourceFile.url
+};
+
+output.text("Upload payload:");
+output.text(JSON.stringify(uploadPayload, null, 2));
+
+// ----------------------------------------------------
+// Send the file URL to NocoDB's upload-by-url endpoint
+// ----------------------------------------------------
+let uploadResponse;
+
+try {
+  uploadResponse = await fetch(
+    `${NOCO_BASE_URL}/api/v1/db/storage/upload-by-url`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "xc-token": NOCO_API_TOKEN,
+      },
+      body: JSON.stringify(uploadPayload)
+    }
+  );
+} catch (err) {
+  output.text("❌ Upload request failed.");
+  output.text(String(err));
+  return;
+}
+
+// ----------------------------------------------------
+// Print HTTP status before trying to parse response
+// ----------------------------------------------------
+output.text(`Upload HTTP status: ${uploadResponse.status}`);
+output.text(`Upload HTTP ok: ${uploadResponse.ok}`);
+
+// Read raw response text first for debugging
+let responseText = "";
+try {
+  responseText = await uploadResponse.text();
+  output.text("Upload raw response:");
+  output.text(responseText);
+} catch (err) {
+  output.text("❌ Could not read upload response text.");
+  output.text(String(err));
+  return;
+}
+
+// Stop early if upload failed
+if (!uploadResponse.ok) {
+  output.text("❌ Upload endpoint returned a non-success status.");
+  return;
+}
+
+// ----------------------------------------------------
+// Parse upload response JSON
+// ----------------------------------------------------
+let uploadData;
+try {
+  uploadData = JSON.parse(responseText);
+} catch (err) {
+  output.text("❌ Upload response was not valid JSON.");
+  output.text(String(err));
+  return;
+}
+
+output.text("Upload parsed response:");
+output.text(JSON.stringify(uploadData, null, 2));
+
+// ----------------------------------------------------
+// Normalize response to array
+// ----------------------------------------------------
+const uploadedFiles = Array.isArray(uploadData) ? uploadData : [uploadData];
+
+// ----------------------------------------------------
+// Write uploaded file into target PDF field
+// ----------------------------------------------------
+try {
+  await targetTable.updateRecordAsync(createResult, {
+    [FIELD_PDF]: uploadedFiles
+  });
+
+  output.text("✅ PDF successfully uploaded and linked to Stream 1.");
+} catch (err) {
+  output.text("❌ Failed writing uploaded file to Stream 1.");
+  output.text(String(err));
+  return;
+}
+
+// ----------------------------------------------------
+// Verify what actually got stored
+// ----------------------------------------------------
+try {
+  const verifyRec = await fetchRecordById(targetTable, createResult);
+  if (verifyRec) {
+    const storedPdf = verifyRec.getCellValue(FIELD_PDF);
+    output.text("Stored PDF after upload:");
+    output.text(JSON.stringify(storedPdf, null, 2));
+  }
+} catch (err) {
+  output.text("⚠️ Verification failed.");
+  output.text(String(err));
+}
+//=====================================
+// STEP 8 — CHECK IT OFF
+//=====================================
