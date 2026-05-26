@@ -38,9 +38,6 @@ This note documents the design and logic of an automated record transfer script 
 | `PDF_FIELD_ID` | `"cpkdbatjdangzen"` | NocoDB field ID for the PDF column in the target table |
 
 
-<img width="425" height="315" alt="image" src="https://github.com/user-attachments/assets/cb73a352-c7d0-4b26-99a8-7a011c503678" />
-<img width="347" height="265" alt="image" src="https://github.com/user-attachments/assets/8dea5c10-5015-41d8-9823-87b2e1743df3" />
-
 ###  d. Field names
 
 These must match column names exactly (case-sensitive) in both source and target tables.
@@ -86,6 +83,9 @@ https://app.nocodb.com/#/base/peupdms4mcx2q90/table/mshgg62sdfnldh4/...
 - Segment after `/base/` → `NOCO_BASE_ID`
 - Segment after `/table/` → table ID (repeat for each table)
 Alternatively, open the **three-dot menu (⋯)** next to a table name → **API Snippet**. The endpoint URL in the snippet contains both IDs.
+
+<img width="425" height="315" alt="image" src="https://github.com/user-attachments/assets/cb73a352-c7d0-4b26-99a8-7a011c503678" />
+<img width="347" height="265" alt="image" src="https://github.com/user-attachments/assets/8dea5c10-5015-41d8-9823-87b2e1743df3" />
 
 ### g. Generating NocoDb API token
 1. Log into your NocoDB instance.
