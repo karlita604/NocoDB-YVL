@@ -5,14 +5,14 @@
 const SOURCE_TABLE_NAME          = "RA Filter";
 const SOURCE_VIEW_NAME           = "RA Filter";
 const TARGET_TABLE_NAME          = "Stream 1";
-const TRANSFER_CHECKBOX_FIELD_ID = "cnxpjkjloygs0b9";
+const TRANSFER_CHECKBOX_FIELD_ID = "cshkkkxvhh87qs1";
 
 const NOCO_BASE_URL    = "https://app.nocodb.com";
 const NOCO_API_TOKEN   = "NznZCYDSMkYbTvo7qxrXINAqPkHvXgU67PVMV0G9";
-const NOCO_BASE_ID     = "peupdms4mcx2q90";
-const RA_TABLE_ID      = "mshgg62sdfnldh4";
-const STREAM1_TABLE_ID = "m7wpv6vrusxu803";
-const PDF_FIELD_ID     = "cpkdbatjdangzen";
+const NOCO_BASE_ID     = "p5vl8aexmitl9iw";
+const RA_TABLE_ID      = "mb4sus1c91hbkp0"; 
+const STREAM1_TABLE_ID = "myyjd4jln70o7yd";
+const PDF_FIELD_ID     = "cqm1d2ui749olys";
 
 const FIELD_ARTICLE_ID       = "Article_ID";
 const FIELD_JOURNAL_CODE     = "Journal_Code";
@@ -261,24 +261,8 @@ if (!sourceFile.url) {
 }
 
 // Fetch fresh signed URL from v3 API
-let freshUrl;
-try {
-  const recordResponse = await fetch(
-    `${NOCO_BASE_URL}/api/v3/data/${NOCO_BASE_ID}/${RA_TABLE_ID}/records/${rowCtx.id}`,
-    { headers: { "xc-token": NOCO_API_TOKEN } }
-  );
-  if (!recordResponse.ok) { output.text(`❌ Could not fetch signed URL: HTTP ${recordResponse.status}`); return; }
-
-  const recordData = JSON.parse(await recordResponse.text());
-  const pdfField   = recordData.fields?.[FIELD_PDF] ?? recordData[FIELD_PDF];
-  const firstFile  = Array.isArray(pdfField) ? pdfField[0] : pdfField;
-  freshUrl         = firstFile?.signedUrl ?? firstFile?.url;
-
-  if (!freshUrl) { output.text("❌ No signed URL in API response."); return; }
-} catch (err) {
-  output.text(`❌ Failed to fetch signed URL: ${err}`);
-  return;
-}
+const freshUrl = sourceFile.signedUrl ?? sourceFile.url;
+if (!freshUrl) { output.text("❌ No URL on source file."); return; }
 
 // Fetch file bytes and base64 encode
 let base64Data;
