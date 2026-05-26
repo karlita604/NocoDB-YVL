@@ -13,7 +13,11 @@ This note documents the design and logic of an automated record transfer script 
 ## 0. User Guide
 ###  0a. Airtable table & view names
 
-
+| Constant | Current value | Notes |
+|---|---|---|
+| `SOURCE_TABLE_NAME` | `"RA Filter"` | Table where the button is installed |
+| `SOURCE_VIEW_NAME` | `"RA Filter"` | View used to load the source record |
+| `TARGET_TABLE_NAME` | `"Stream 1"` | Table records are transferred into |
 
 ---
 ## 1. System Architecture
