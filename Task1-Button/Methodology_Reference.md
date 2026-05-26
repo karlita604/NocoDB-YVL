@@ -32,12 +32,12 @@ This note documents the design and logic of an automated record transfer script 
 | `NOCO_BASE_URL` | `"https://app.nocodb.com"` | Change if self-hosting NocoDB |
 | `NOCO_API_TOKEN` | `"Nzn***9"` | Treat as a password — do not share |
 | `NOCO_BASE_ID` | `"peupdms4mcx2q90"` | Found in the NocoDB URL after `/base/` |
-| `RA_TABLE_ID` | `"mshgg62sdfnldh4"` | NocoDB ID for the source table |
+| `RA_TABLE_ID` | `"mshgg62sdfnldh4"` | Table ID for the source table |
 | `STREAM1_TABLE_ID` | `"m7wpv6vrusxu803"` | NocoDB ID for the target table | 
 | `PDF_FIELD_ID` | `"cpkdbatjdangzen"` | NocoDB field ID for the PDF column in the target table |
 
 
-<img width="1525" height="1215" alt="image" src="https://github.com/user-attachments/assets/cb73a352-c7d0-4b26-99a8-7a011c503678" />
+<img width="1025" height="915" alt="image" src="https://github.com/user-attachments/assets/cb73a352-c7d0-4b26-99a8-7a011c503678" />
 
 
 ---
