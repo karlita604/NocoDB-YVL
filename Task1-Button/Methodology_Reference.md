@@ -1,30 +1,48 @@
-# Automated Record Transfer System — Methodology Reference
 
-**Document type:** Supplementary methodology note  
+# Automated Record Transfer System — Methodology Reference
+  
 **Context:** Data pipeline supporting systematic literature review workflow  
 **Platform:** Airtable (cloud-based relational database) with NocoDB REST API integration
 
 ---
-
 ## Abstract
 
 This note documents the design and logic of an automated record transfer script developed to support a systematic literature review data pipeline. The script is deployed as a button action within a screening table and transfers qualified records — along with all associated metadata and PDF attachments — into a downstream extraction table. The workflow eliminates manual re-entry of bibliographic data between pipeline stages and maintains an auditable transfer log via a checkbox flag on the source record.
 
 ---
+## 0. User Guide
+###  0a. Airtable table & view names
 
+
+
+---
 ## 1. System Architecture
 
 The pipeline consists of two database tables within a shared base environment:
 
-- **Screening table** (*source*): Records enter this table following initial retrieval. Each record represents one article and carries bibliographic metadata, a PDF attachment, and screening decision fields. A button field on each record triggers the transfer script.
+- **Screening table** (*source*): Records enter this table following initial retrieval. Each record represents:
+-  Field names are standardised across both tables.
+
+	| Field | Type | Transfer method |
+	|---|---|---|
+	| Article ID | Plain text | Direct write |
+	| Title | Plain text | Written at record creation |
+	| Journal Code | Single select | Option existence checked; added if absent |
+	| Publication Year | Numeric | Direct write |
+	| Volume | Plain text | Direct write |
+	| Issue | Plain text | Direct write |
+	| DOI | Plain text | Direct write |
+	| Open Access status | Single select | Option existence checked; skipped if absent |
+	| PDF attachment | Binary file | Via NocoDB REST API (base64 encoded) |
+
 - **Extraction table** (*target*): Qualified records are transferred here for full-text review and data extraction.
 
-A companion database (NocoDB) mirrors the base and provides a REST API used specifically for binary file transfer operations, which are not natively supported by the scripting environment's write API.
+
 
 ```
-╔══════════════════════════════════════════════════════════════════════════════════════╗
-║                           SHARED NocoDB BASE ENVIRONMENT                           ║
-╚══════════════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════╗
+║                    SHARED NocoDB BASE ENVIRONMENT                ║
+╚══════════════════════════════════════════════════════════════════╝
 
 
 ┌──────────────────────────────┐
@@ -90,31 +108,14 @@ A companion database (NocoDB) mirrors the base and provides a REST API used spec
 │ ✓ Checkbox marked complete   │
 └──────────────────────────────┘
 ```
----
-
-## 2. Data Fields Transferred
-
-The following bibliographic fields are transferred from source to target on each invocation. Field names are standardised across both tables.
-
-| Field | Type | Transfer method |
-|---|---|---|
-| Article ID | Plain text | Direct write |
-| Title | Plain text | Written at record creation |
-| Journal Code | Single select | Option existence checked; added if absent |
-| Publication Year | Numeric | Direct write |
-| Volume | Plain text | Direct write |
-| Issue | Plain text | Direct write |
-| DOI | Plain text | Direct write |
-| Open Access status | Single select | Option existence checked; skipped if absent |
-| PDF attachment | Binary file | Via NocoDB REST API (base64 encoded) |
 
 ---
 
-## 3. Script Logic
+## 2. Script Logic
 
-The script executes seven sequential steps. All steps are atomic — a failure at any step outputs a descriptive error message and halts execution without partial writes to subsequent steps.
+The script uses step compartmentalization unfolding in seven steps. A failure at any step outputs a descriptive error message and halts execution without partial writes to subsequent steps.
 
-### Step 1 — Source record resolution
+### Step 1 — Load Source Record
 The script reads the row context from the button click event to identify the triggering record. The record is loaded from a named view of the source table rather than the table directly, so that any active view filters are applied. If the record has been filtered out of the view (e.g. due to a prior screening decision), the script exits cleanly with an informative message.
 
 ### Step 2 — Field value extraction
@@ -124,13 +125,15 @@ Each field is read twice: once as a human-readable string (for logging) and once
 A new record is created in the extraction table with the `Title` field as the initial value. Remaining plain-text fields are then written individually. The write helper skips null or empty values to avoid overwriting any pre-existing data in the target record.
 
 ### Step 4 — Single-select field: Journal Code
-Single-select fields in this environment cannot receive values outside their defined option list. The script reads the current option list from the target field definition, performs a case-insensitive existence check, and — if the incoming value is not yet present — appends it to the option list before writing. This allows the Journal Code vocabulary to grow organically as new journals enter the pipeline without requiring manual option management.
+Single-select fields in this environment cannot receive values outside their defined option list. The script reads the current option list from the target field definition, performs a case-insensitive existence check, and — if the incoming value is not yet present — *appends it to the option list before writing. This allows the Journal Code vocabulary to grow organically as new journals enter the pipeline without requiring manual option management.* 
+
+ - This is the ideal implementation, but there is a recursive error in the way Journal code can be updated. A reference is needed for code creation, but reference is unavailable for a code until it is created. 
 
 ### Step 5 — Single-select field: Open Access status
-The same existence check is applied to the Open Access field. Unlike Journal Code, new values are **not** added automatically; instead, unrecognised values are skipped with a logged warning. This reflects the controlled-vocabulary nature of Open Access status: the set of valid values is fixed, and an unrecognised value most likely indicates a data quality issue in the source record rather than a legitimate new option.
+The same existence check is applied to the Open Access field.
 
 ### Step 6 — Transfer flag
-A dedicated boolean (checkbox) field on the source record is set to true upon successful completion of the metadata transfer. This provides a persistent, queryable audit trail of which records have been transferred and prevents accidental duplicate transfers. The field is identified by its internal system ID rather than its display name, so the flag remains stable even if the field is renamed.
+A dedicated boolean (checkbox) field in the source table is set to true upon successful completion of the metadata transfer. This provides a trail of which records have been transferred (button has been clicked at least once) and provides a sanity check for the reviewers. The field is identified by its internal system ID rather than its display name, so the flag remains stable even if the field is renamed.
 
 ### Step 7 — PDF attachment transfer
 Attachment files cannot be written directly to a record via the scripting environment's native API. The script resolves this constraint through the following procedure:
@@ -144,7 +147,7 @@ If no PDF is present on the source record, this step is skipped and the transfer
 
 ---
 
-## 4. Error Handling
+## 3. Error Handling
 
 The script uses a fail-fast pattern: each operation is wrapped in a `try/catch` block, and failures produce descriptive output before halting. The following conditions are explicitly handled:
 
