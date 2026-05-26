@@ -1,4 +1,5 @@
 
+
 # Automated Record Transfer System — Methodology Reference
   
 **Context:** Data pipeline supporting systematic literature review workflow  
@@ -11,7 +12,7 @@ This note documents the design and logic of an automated record transfer script 
 
 ---
 ## 0. User Guide
-###  0a. Airtable table & view names
+###  a. Airtable table & view names
 
 | Constant | Current value | Notes |
 |---|---|---|
@@ -19,13 +20,13 @@ This note documents the design and logic of an automated record transfer script 
 | `SOURCE_VIEW_NAME` | `"RA Filter"` | View used to load the source record |
 | `TARGET_TABLE_NAME` | `"Stream 1"` | Table records are transferred into |
 
-### 0b. Airtable field ID
+### b. Airtable field ID
 
 | Constant | Current value | Notes |
 |---|---|---|
 | `TRANSFER_CHECKBOX_FIELD_ID` | `"cnxpjkjloygs0b9"` | Internal Airtable field ID of the transfer checkbox on the source table |
 
-### 0c. NocoDB API credentials & IDs
+### c. NocoDB API credentials & IDs
 
 | Constant | Current value | Notes |
 |---|---|---|
@@ -37,9 +38,64 @@ This note documents the design and logic of an automated record transfer script 
 | `PDF_FIELD_ID` | `"cpkdbatjdangzen"` | NocoDB field ID for the PDF column in the target table |
 
 
-<img width="1025" height="915" alt="image" src="https://github.com/user-attachments/assets/cb73a352-c7d0-4b26-99a8-7a011c503678" />
-<img width="647" height="565" alt="image" src="https://github.com/user-attachments/assets/8dea5c10-5015-41d8-9823-87b2e1743df3" />
+<img width="425" height="315" alt="image" src="https://github.com/user-attachments/assets/cb73a352-c7d0-4b26-99a8-7a011c503678" />
+<img width="347" height="265" alt="image" src="https://github.com/user-attachments/assets/8dea5c10-5015-41d8-9823-87b2e1743df3" />
 
+###  d. Field names
+
+These must match column names exactly (case-sensitive) in both source and target tables.
+
+| Constant | Value |
+|---|---|
+| `FIELD_ARTICLE_ID` | `"Article_ID"` 
+| `FIELD_JOURNAL_CODE` | `"Journal_Code"` |
+| `FIELD_PUBLICATION_YEAR` | `"Publication Year"` |
+| `FIELD_VOLUME` | `"Volume"` |
+| `FIELD_ISSUE` | `"Issue"` |
+| `FIELD_TITLE` | `"Title"` |
+| `FIELD_DOI` | `"DOI"` |
+| `FIELD_PDF` | `"PDF"` |
+| `FIELD_OA` | `"Open Access"` |
+
+### e. Deploying to a New Base
+Work through this checklist in order.
+ 
+- [ ] Update `SOURCE_TABLE_NAME`, `SOURCE_VIEW_NAME`, `TARGET_TABLE_NAME` to match the new table and view display names
+- [ ] Find the checkbox field ID on the new source table → update `TRANSFER_CHECKBOX_FIELD_ID`
+- [ ] Generate a new NocoDB API token → update `NOCO_API_TOKEN`
+- [ ] Copy the base ID from the NocoDB URL → update `NOCO_BASE_ID`
+- [ ] Copy the source table ID from NocoDB → update `RA_TABLE_ID`
+- [ ] Copy the target table ID from NocoDB → update `STREAM1_TABLE_ID`
+- [ ] Copy the PDF field ID from the target table → update `PDF_FIELD_ID`
+- [ ] Confirm all `FIELD_*` names match column names in both tables
+
+### f. Tips and Tricks 
+
+#### Finding Airtable Field IDs (ex. checkbox)
+1. In Airtable, click the column header of the [checkbox field].
+2. Select **Customize field**.
+3. Click **Copy field ID** at the bottom of the panel.
+   
+#### Base and Table IDs
+The fastest method is the browser URL. Click on any table in NocoDB — the URL will look like:
+ 
+```
+https://app.nocodb.com/#/base/peupdms4mcx2q90/table/mshgg62sdfnldh4/...
+```
+ 
+- Segment after `/base/` → `NOCO_BASE_ID`
+- Segment after `/table/` → table ID (repeat for each table)
+Alternatively, open the **three-dot menu (⋯)** next to a table name → **API Snippet**. The endpoint URL in the snippet contains both IDs.
+
+### g. Generating NocoDb API token
+1. Log into your NocoDB instance.
+2. Click your **profile avatar** in the top-right corner.
+3. Select **Team & Settings** (labelled **Account** in some versions).
+4. Go to the **API Tokens** tab.
+5. Click **+ Add new token**, enter a descriptive name (e.g. `airtable-transfer`), and click **Save**.
+6. Copy the token immediately — it is shown only once.
+7. Paste it into the script as `NOCO_API_TOKEN`.
+> **Security:** This token grants full read/write access to your NocoDB base. Do not paste it into shared documents, commit it to version control, or include it in any publication. Rotate it from the same panel if you believe it has been exposed.
 
 ---
 ## 1. System Architecture
