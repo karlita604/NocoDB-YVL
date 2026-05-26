@@ -22,18 +22,74 @@ The pipeline consists of two database tables within a shared base environment:
 A companion database (NocoDB) mirrors the base and provides a REST API used specifically for binary file transfer operations, which are not natively supported by the scripting environment's write API.
 
 ```
-┌─────────────────────┐        Script (button)       ┌──────────────────────┐
-│   Screening table   │  ─────────────────────────►  │  Extraction table    │
-│   (source)          │                               │  (target)            │
-│                     │  ◄─────────────────────────   │                      │
-│  [✓] Transfer flag  │       Checkbox flagged        │  New record created  │
-└─────────────────────┘                               └──────────────────────┘
-           │                                                     ▲
-           │           NocoDB v3 REST API                        │
-           └─────────────────────────────────────────────────────┘
-                        (PDF binary upload)
-```
+╔══════════════════════════════════════════════════════════════════════════════════════╗
+║                           SHARED NocoDB BASE ENVIRONMENT                           ║
+╚══════════════════════════════════════════════════════════════════════════════════════╝
 
+
+┌──────────────────────────────┐
+│        SCREENING TABLE       │
+│           (SOURCE)           │
+├──────────────────────────────┤
+│ • Article metadata           │
+│ • DOI information            │
+│ • PDF attachment             │
+│ • Transfer status checkbox   │
+└──────────────────────────────┘
+               │
+               │ 1. User presses
+               │    “Transfer” button
+               ▼
+
+        ┌──────────────────────────────┐
+        │       TRANSFER SCRIPT        │
+        │      (Automation Layer)      │
+        ├──────────────────────────────┤
+        │ • Reads source record        │
+        │ • Validates field mappings   │
+        │ • Creates target entry       │
+        │ • Handles PDF upload         │
+        │ • Updates transfer state     │
+        └──────────────────────────────┘
+                  │              │
+                  │              │
+                  │              │
+                  │              │
+                  │              ▼
+                  │      ┌──────────────────────┐
+                  │      │   NocoDB v3 REST API │
+                  │      ├──────────────────────┤
+                  │      │ Binary PDF Transfer  │
+                  │      │ Attachment Handling  │
+                  │      └──────────────────────┘
+                  │                 │
+                  │                 │
+                  │                 ▼
+                  │
+                  │ 2. Direct field mapping
+                  │    (metadata transfer)
+                  ▼
+
+┌──────────────────────────────┐
+│       EXTRACTION TABLE       │
+│           (TARGET)           │
+├──────────────────────────────┤
+│ • Newly created record       │
+│ • Metadata replicated        │
+│ • PDF attachment stored      │
+│ • Ready for downstream use   │
+└──────────────────────────────┘
+               ▲
+               │
+               │ 3. Source record updated
+               │    after successful transfer
+               │
+┌──────────────────────────────┐
+│     TRANSFER FLAG UPDATE     │
+├──────────────────────────────┤
+│ ✓ Checkbox marked complete   │
+└──────────────────────────────┘
+```
 ---
 
 ## 2. Data Fields Transferred
