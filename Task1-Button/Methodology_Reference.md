@@ -168,7 +168,7 @@ The script uses a fail-fast pattern: each operation is wrapped in a `try/catch` 
 
 ---
 
-## 5. Design Decisions & Limitations
+## 4. Design Decisions & Limitations
 
 **Why a companion REST API for PDF upload?**  
 The scripting environment's native `table.updateRecordAsync()` method does not support writing binary attachment data from within a script. The REST API of a companion database — which mirrors the base — provides a file upload endpoint that accepts base64-encoded payloads, enabling this capability.
@@ -187,7 +187,7 @@ The PDF upload endpoint requires the NocoDB internal integer row ID of the targe
 
 ---
 
-## 6. Reproducibility Notes
+## 5. Reproducibility Notes
 
 To reproduce or adapt this workflow:
 
