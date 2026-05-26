@@ -19,6 +19,24 @@ This note documents the design and logic of an automated record transfer script 
 | `SOURCE_VIEW_NAME` | `"RA Filter"` | View used to load the source record |
 | `TARGET_TABLE_NAME` | `"Stream 1"` | Table records are transferred into |
 
+### 0b. Airtable field ID
+
+| Constant | Current value | Notes |
+|---|---|---|
+| `TRANSFER_CHECKBOX_FIELD_ID` | `"cnxpjkjloygs0b9"` | Internal Airtable field ID of the transfer checkbox on the source table |
+
+### 0c. NocoDB API credentials & IDs
+
+| Constant | Current value | Notes |
+|---|---|---|
+| `NOCO_BASE_URL` | `"https://app.nocodb.com"` | Change if self-hosting NocoDB |
+| `NOCO_API_TOKEN` | `"Nzn***9"` | Treat as a password — do not share |
+| `NOCO_BASE_ID` | `"peupdms4mcx2q90"` | Found in the NocoDB URL after `/base/` |
+| `RA_TABLE_ID` | `"mshgg62sdfnldh4"` | NocoDB ID for the source table |
+| `STREAM1_TABLE_ID` | `"m7wpv6vrusxu803"` | NocoDB ID for the target table | <img width="1525" height="1215" alt="image" src="https://github.com/user-attachments/assets/cb73a352-c7d0-4b26-99a8-7a011c503678" />
+
+| `PDF_FIELD_ID` | `"cpkdbatjdangzen"` | NocoDB field ID for the PDF column in the target table |
+
 ---
 ## 1. System Architecture
 
