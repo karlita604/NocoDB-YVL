@@ -38,6 +38,7 @@ This note documents the design and logic of an automated record transfer script 
 
 
 <img width="1025" height="915" alt="image" src="https://github.com/user-attachments/assets/cb73a352-c7d0-4b26-99a8-7a011c503678" />
+<img width="647" height="565" alt="image" src="https://github.com/user-attachments/assets/8dea5c10-5015-41d8-9823-87b2e1743df3" />
 
 
 ---
